@@ -69,13 +69,25 @@ var downloadImages = function(backgrounds, directory) {
     _.each(backgrounds, function(backgroundEntry) {
         var deferred = Q.defer();
         promises.push(deferred.promise);
-        var filename = directory + '/' + getNameFromURL(backgroundEntry.url);
-        request(backgroundEntry.url)
+        var filename = directory + '/' + getNameFromURL(backgroundEntry.url) + '.jpg';
+        // check if filename exists
+	if (fs.existsSync(filename)) {
+		console.log("file exists, skipping");
+	}
+	else {
+          request(backgroundEntry.url)
+            .on('error', function(err) {
+              console.log(err)
+            })
+            .on('response', function(response) {
+                console.log(response.statusCode); // 200
+            })
             .pipe(fs.createWriteStream(filename))
             .on('close', function() {
                 console.log(chalk.grey(filename));
                 deferred.resolve();
             });
+        };
     });
     return Q.all(promises);
 };

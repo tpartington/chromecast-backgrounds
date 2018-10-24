@@ -12,24 +12,24 @@ var getChromecastBackgrounds = require('./index');
 var read = fs.readFileSync;
 var write = fs.writeFileSync;
 
-var getNameFromURL = function(url) {
+var getNameFromURL = function (url) {
     return decodeURIComponent(url.split('/').pop());
 };
 
-var saveObjectToFile = function(filename, content) {
+var saveObjectToFile = function (filename, content) {
     var jsonString = JSON.stringify(content, null, 4);
     write(filename, jsonString);
 };
 
-var writeInlineMarkdown = function(filename, backgrounds) {
+var writeInlineMarkdown = function (filename, backgrounds) {
     var content = '';
-    _(backgrounds).each(function(backgroundEntry) {
-        content += '![]('+backgroundEntry.url+')\n';
+    _(backgrounds).each(function (backgroundEntry) {
+        content += '![](' + backgroundEntry.url + ')\n';
     });
     write(filename, content);
 };
 
-var updateDimensions = function(backgrounds, size, width, height, crop) {
+var updateDimensions = function (backgrounds, size, width, height, crop) {
     // This regex looks for a path param (leading slash included and
     // file name) starting with s, w, or h and then some decimals, and
     // might have -'s in there or other characters, but not slashes.
@@ -58,36 +58,47 @@ var updateDimensions = function(backgrounds, size, width, height, crop) {
         return;
     }
     var outputString = '/' + dimensions.join('-') + '/$1';
-    _.each(backgrounds, function(backgroundEntry) {
+    _.each(backgrounds, function (backgroundEntry) {
         backgroundEntry.url = backgroundEntry.url.replace(regex, outputString);
     });
 };
 
-var downloadImages = function(backgrounds, directory) {
+function trimSlash(string) {
+    while(string.charAt(string.length-1)=="/") {
+        string = string.substring(0,string.length-1);
+    }
+
+    return string;
+}
+
+var downloadImages = function (backgrounds, directory) {
     var promises = [];
+    directory = trimSlash(directory)
     fs.existsSync(directory) || fs.mkdirSync(directory);
-    _.each(backgrounds, function(backgroundEntry) {
+    _.each(backgrounds, function (backgroundEntry) {
         var deferred = Q.defer();
         promises.push(deferred.promise);
         var filename = directory + '/' + getNameFromURL(backgroundEntry.url) + '.jpg';
         // check if filename exists
-	if (fs.existsSync(filename)) {
-		console.log("file exists, skipping");
-	}
-	else {
-          request(backgroundEntry.url)
-            .on('error', function(err) {
-              console.log(err)
+        if (fs.existsSync(filename)) {
+            console.log("file exists, skipping " + filename);
+        }
+        else {
+            var r = request(backgroundEntry.url)
+            r.pause()
+            r.on('response', function (resp) {
+                if (resp.statusCode === 200) {
+                    r.pipe(fs.createWriteStream(filename))
+                        .on('close', function () {
+                            console.log(chalk.grey("downloading " + filename));
+                        });
+                        //console.log(chalk.grey("downloading " + filename));
+                    r.resume()
+                } else {
+                    console.log(chalk.yellow(resp.statusCode + " error downloading " + filename));
+                }
             })
-            .on('response', function(response) {
-                console.log(response.statusCode); // 200
-            })
-            .pipe(fs.createWriteStream(filename))
-            .on('close', function() {
-                console.log(chalk.grey(filename));
-                deferred.resolve();
-            });
-        };
+        }
     });
     return Q.all(promises);
 };
@@ -104,9 +115,9 @@ var options = nopt({
     width: String,
     writemd: String
 }, {
-    h: '--help',
-    v: '--verbose'
-});
+        h: '--help',
+        v: '--verbose'
+    });
 
 if (options.help) {
     var helpString = 'chromecast-backgrounds \
@@ -123,11 +134,11 @@ if (options.help) {
 
 console.log(chalk.underline('Parsing Chromecast Home...\n'));
 
-getChromecastBackgrounds().then(function(backgrounds) {
+getChromecastBackgrounds().then(function (backgrounds) {
     if (options.load) {
         console.log(chalk.underline('Loading previous backgrounds from', options.load));
         var backgroundsFromJSON = JSON.parse(read(options.load, 'utf8'));
-        backgrounds = _.uniq(_.union(backgrounds, backgroundsFromJSON), function(backgroundEntry) {
+        backgrounds = _.uniq(_.union(backgrounds, backgroundsFromJSON), function (backgroundEntry) {
             return getNameFromURL(backgroundEntry.url);
         });
         var newCount = backgrounds.length - backgroundsFromJSON.length;
@@ -140,10 +151,10 @@ getChromecastBackgrounds().then(function(backgrounds) {
             chalk.underline('Updating dimensions (size:%d, width:%d, height:%d)'),
             options.size, options.width, options.height);
         updateDimensions(backgrounds,
-                         options.size,
-                         options.width,
-                         options.height,
-                         options.crop);
+            options.size,
+            options.width,
+            options.height,
+            options.crop);
     }
     if (options.save) {
         console.log(chalk.underline('Writing backgrounds JSON to', options.save));
@@ -158,7 +169,7 @@ getChromecastBackgrounds().then(function(backgrounds) {
     }
     if (options.download) {
         console.log(chalk.underline('Downloading background images...\n'));
-        downloadImages(backgrounds, options.download).done(function() {
+        downloadImages(backgrounds, options.download).done(function () {
             console.log(chalk.green('\n✓ Done!'));
         });
     } else {
